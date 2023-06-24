@@ -72,9 +72,7 @@ def extract_attributes(node):
             if value == "NOTSET":
                 pass
             else:
-                raise NotImplementedError(
-                    "auto_pad={} functionality not implemented.".format(value)
-                )
+                kwargs["auto_pad_modification"] = value
         elif attr.name == "axis" and node.op_type == "Flatten":
             kwargs["start_dim"] = extract_attr_values(attr)
         elif attr.name == "axis" or attr.name == "axes":
@@ -133,7 +131,7 @@ def extract_attributes(node):
         elif attr.name == "momentum":
             kwargs["momentum"] = extract_attr_values(attr)
         elif attr.name == "noop_with_empty_axes":
-            kwargs["noop_with_empty_axes"] = extract_attr_values(attr)
+           kwargs["noop_with_empty_axes"] = extract_attr_values(attr)
         elif attr.name == "output_shape" and node.op_type == "ConvTranspose":
             raise NotImplementedError(
                 "ConvTranspose with dynamic padding not implemented."

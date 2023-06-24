@@ -1,7 +1,8 @@
 import numpy as np
 import torch
+from math import ceil, floor
 from torch import nn
-from onnx import numpy_helper
+from onnx import numpy_helper, load
 
 from onnx2pytorch.operations import (
     BatchNormWrapper,
@@ -9,7 +10,6 @@ from onnx2pytorch.operations import (
     LSTMWrapper,
 )
 from onnx2pytorch.convert.attribute import extract_attributes, extract_attr_values
-
 
 def extract_params(params):
     """Extract weights and biases."""
@@ -32,7 +32,7 @@ def load_params(layer, weight, bias):
         layer.bias.data = torch.from_numpy(numpy_helper.to_array(bias))
 
 
-def convert_layer(node, layer_type, params=None):
+def convert_layer(node, layer_type, params=None, edges=None):
     """Use to convert Conv, MaxPool, AvgPool layers."""
     assert layer_type in [
         "Conv",
@@ -51,7 +51,8 @@ def convert_layer(node, layer_type, params=None):
 
     pad_layer = None
     if params:
-        weight, bias = extract_params(params)
+        weight, bias = extract_params(params)       
+
         kwargs["bias"] = bias is not None
         kwargs["in_channels"] = weight.dims[1] * kwargs.get("groups", 1)
         kwargs["out_channels"] = weight.dims[0]
@@ -65,6 +66,34 @@ def convert_layer(node, layer_type, params=None):
         # if padding is a layer, remove from kwargs and prepend later
         if "padding" in kwargs and isinstance(kwargs["padding"], nn.Module):
             pad_layer = kwargs.pop("padding")
+
+        if "auto_pad_modification" in kwargs:
+            padding_mode = kwargs.pop("auto_pad_modification")
+
+            input_type = None; output_type = None
+            for _, edge in enumerate(edges):
+                 # all conv2d should have input data at index 0
+                if node.input[0] == edge.name:
+                    input_dimension = edge.type.tensor_type.shape.dim
+                if node.output[0] == edge.name:
+                    output_dimension = edge.type.tensor_type.shape.dim
+                if input_type and output_type:
+                    break
+
+            # hopefully dimensions everywhere batch channel x y 
+            input = [input_dimension[2].dim_value, input_dimension[3].dim_value]
+            output = [output_dimension[2].dim_value, output_dimension[3].dim_value]
+            # print(f"Found input to be: {input} and output: {output}")
+
+            if padding_mode == "SAME_UPPER":
+                stride = kwargs["stride"]
+                kernel = kwargs["kernel_size"]
+                x_pad = ((output[0] - 1)*stride[0] - input[0] + kernel[0])/2
+                y_pad = ((output[1] - 1)*stride[1] - input[1] + kernel[1])/2
+                padding = (floor(x_pad), ceil(x_pad), floor(y_pad), ceil(y_pad))
+                pad_layer = torch.nn.ConstantPad2d(padding, value=0)
+            else:
+                raise ValueError("Missing implementation (invalid conversion).")
 
         # initialize layer and load weights
         layer = layer(**kwargs)

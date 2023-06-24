@@ -101,9 +101,10 @@ def convert_operations(onnx_graph, opset_version, batch_dim=0, enable_pruning=Tr
         elif node.op_type == "ConstantOfShape":
             op = ConstantOfShape(**extract_attributes(node))
         elif node.op_type == "Conv":
-            op = convert_layer(node, "Conv", params)
+            op = convert_layer(node, "Conv", params, onnx_graph.value_info)
         elif node.op_type == "ConvTranspose":
-            op = convert_layer(node, "ConvTranspose", params)
+            params.append(onnx_graph)
+            op = convert_layer(node, "ConvTranspose", params, onnx_graph.value_info)
         elif node.op_type == "Div":
             op = Div()
         elif node.op_type == "Elu":
